@@ -154,6 +154,28 @@ contract SportsPrediction is Ownable, Pausable, ReentrancyGuard {
         emit BetHome(msg.sender, fixture, _amount);
     }
 
+    // bet home with fiat payment
+    function betHomeFiat(uint256 fixture, uint256 _amount) external whenNotPaused nonReentrant notContract {
+
+        require(_betTable(fixture), "Match not bettable");
+        require(_amount >= minBetAmount, "Bet amount must be greater than minBetAmount");
+        require(_amount <= maxBetAmount, "Bet amount must be smaller than maxBetAmount");
+        require(ledger[fixture][msg.sender].amount == 0 || ledger[fixture][msg.sender].position == Position.Home, "You can not bet to this match");
+        // Update match data
+
+        Match storage mm = matches[fixture];
+        mm.totalAmount = mm.totalAmount + _amount;
+        mm.homeAmount = mm.homeAmount + _amount;
+
+        // Update user data
+        BetInfo storage betInfo = ledger[fixture][msg.sender];
+        betInfo.position = Position.Home;
+        betInfo.amount = _amount;
+        userMatches[msg.sender].push(fixture);
+
+        emit BetHome(msg.sender, fixture, _amount);
+    }
+
     /**
      * @notice Bet Draw position
      * @param fixture: fixture
@@ -181,6 +203,28 @@ contract SportsPrediction is Ownable, Pausable, ReentrancyGuard {
         emit BetDraw(msg.sender, fixture, _amount);
     }
 
+    // bet draw with fiat payment
+    function betDrawFiat(uint256 fixture, uint256 _amount) external whenNotPaused nonReentrant notContract {
+
+        require(_betTable(fixture), "Match not bettable");
+        require(_amount >= minBetAmount, "Bet amount must be greater than minBetAmount");
+        require(_amount <= maxBetAmount, "Bet amount must be smaller than maxBetAmount");
+        require(ledger[fixture][msg.sender].amount == 0 || ledger[fixture][msg.sender].position == Position.Draw, "You can not bet to this match");
+
+        // Update match data
+        Match storage mm = matches[fixture];
+        mm.totalAmount = mm.totalAmount + _amount;
+        mm.drawAmount = mm.drawAmount + _amount;
+
+        // Update user data
+        BetInfo storage betInfo = ledger[fixture][msg.sender];
+        betInfo.position = Position.Draw;
+        betInfo.amount = _amount;
+        userMatches[msg.sender].push(fixture);
+
+        emit BetDraw(msg.sender, fixture, _amount);
+    }
+
     /**
      * @notice Bet Away position
      * @param fixture: fixture
@@ -204,6 +248,28 @@ contract SportsPrediction is Ownable, Pausable, ReentrancyGuard {
         userMatches[msg.sender].push(fixture);
 
         IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), _amount);
+
+        emit BetAway(msg.sender, fixture, _amount);
+    }
+
+    // bet away with fiat payment
+    function betAwayFiat(uint256 fixture, uint256 _amount) external whenNotPaused nonReentrant notContract {
+
+        require(_betTable(fixture), "Match not bettable");
+        require(_amount >= minBetAmount, "Bet amount must be greater than minBetAmount");
+        require(_amount <= maxBetAmount, "Bet amount must be smaller than maxBetAmount");
+        require(ledger[fixture][msg.sender].amount == 0 || ledger[fixture][msg.sender].position == Position.Away, "You can not bet to this match");
+
+        // Update match data
+        Match storage mm = matches[fixture];
+        mm.totalAmount = mm.totalAmount + _amount;
+        mm.awayAmount = mm.awayAmount + _amount;
+
+        // Update user data
+        BetInfo storage betInfo = ledger[fixture][msg.sender];
+        betInfo.position = Position.Away;
+        betInfo.amount = _amount;
+        userMatches[msg.sender].push(fixture);
 
         emit BetAway(msg.sender, fixture, _amount);
     }
@@ -236,6 +302,31 @@ contract SportsPrediction is Ownable, Pausable, ReentrancyGuard {
         if (reward > 0) {
             _safeTransferToken(address(msg.sender), reward);
         }
+    }
+
+    // claim with fiat
+    function claimWithFiat(uint256[] calldata fixtures) external nonReentrant notContract returns (uint256){
+        uint256 reward;
+        // Initializes reward
+
+        for (uint256 i = 0; i < fixtures.length; i++) {
+            require(matches[fixtures[i]].startTimestamp != 0, "Match has not started");
+            require(block.timestamp > matches[fixtures[i]].closeTimestamp, "Match has not ended");
+
+            uint256 addedReward = 0;
+
+            // Match valid, claim rewards
+            require(claimable(fixtures[i], msg.sender), "Not eligible for claim");
+            Match memory mm = matches[fixtures[i]];
+            addedReward = (ledger[fixtures[i]][msg.sender].amount * mm.rewardAmount) / mm.rewardBaseCalAmount;
+
+            ledger[fixtures[i]][msg.sender].claimed = true;
+            reward += addedReward;
+
+            emit Claim(msg.sender, fixtures[i], addedReward);
+        }
+
+        return reward;
     }
 
     /**
